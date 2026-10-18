@@ -1,0 +1,51 @@
+#!/bin/bash
+# Installs Grafana OSS, the AWS datasource plugin, and provisions the
+# datasource + dashboard rendered by Terraform (grafana.tf).
+set -euo pipefail
+
+cat > /etc/yum.repos.d/grafana.repo <<'REPO'
+[grafana]
+name=grafana
+baseurl=https://rpm.grafana.com
+repo_gpgcheck=1
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.grafana.com/gpg.key
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+REPO
+
+dnf install -y grafana
+
+grafana cli plugins install ${plugin}
+
+cat >> /etc/sysconfig/grafana-server <<'ENV'
+GF_SECURITY_ADMIN_PASSWORD=${admin_password}
+GF_AUTH_ANONYMOUS_ENABLED=false
+GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/garmin-hr.json
+ENV
+
+mkdir -p /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /var/lib/grafana/dashboards
+
+cat > /etc/grafana/provisioning/datasources/hr-analytics.yaml <<'DS'
+${datasource_yaml}
+DS
+
+cat > /etc/grafana/provisioning/dashboards/lab5.yaml <<'PROV'
+apiVersion: 1
+providers:
+  - name: lab5
+    folder: Lab 5
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+PROV
+
+cat > /var/lib/grafana/dashboards/garmin-hr.json <<'DASH'
+${dashboard_json}
+DASH
+
+chown -R grafana:grafana /var/lib/grafana /etc/grafana/provisioning
+systemctl daemon-reload
+systemctl enable --now grafana-server
